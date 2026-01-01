@@ -1,0 +1,45 @@
+[package]
+name = "code-snippet-designer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Web framework
+axum = "0.7"
+tokio = { version = "1.0", features = ["full"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["fs", "cors", "trace"] }
+multer = "3.0"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Image processing
+image = "0.24"
+resvg = "0.37"
+
+# OCR - commented out until system dependencies are available
+# tesseract = "0.13"
+
+# Syntax highlighting
+syntect = "5.1"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Utilities
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# HTTP
+hyper = "1.0"
+mime = "0.3"
+
+[dev-dependencies]
+tokio-test = "0.4"
