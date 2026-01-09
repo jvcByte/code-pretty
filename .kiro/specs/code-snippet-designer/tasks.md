@@ -22,15 +22,15 @@
     - Implement retry mechanism with exponential backoff for transient failures
     - _Requirements: 4.5, 5.4_
 
-- [ ] 3. Create web server foundation and file handling
-  - [ ] 3.1 Set up Axum web server with basic routing
+- [x] 3. Create web server foundation and file handling
+  - [x] 3.1 Set up Axum web server with basic routing
     - Configure Axum router with health check endpoint
     - Set up middleware for CORS, logging, request timeout, and static file serving
     - Implement basic server startup with graceful shutdown handling
     - Add environment-based configuration management
     - _Requirements: 5.1, 5.2_
 
-  - [ ] 3.2 Implement file upload handling with multipart forms
+  - [x] 3.2 Implement file upload handling with multipart forms
     - Create multipart form handler for image uploads using tower-multipart
     - Add file validation for supported image formats (PNG, JPG, JPEG)
     - Implement FileStorageService for temporary file storage with UUID-based naming
