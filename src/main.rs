@@ -1,6 +1,6 @@
 use axum::{
     http::Method,
-    response::Html,
+    response::{Html, IntoResponse},
     routing::get,
     Router,
 };
@@ -115,11 +115,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/generate/options", get(generate::get_export_options))
         .route("/api/generate/stats", get(generate::get_download_stats))
         
-        // Fallback route for the frontend
-        .fallback(fallback_handler)
-        
         // Serve static files
         .nest_service("/static", ServeDir::new("static"))
+        
+        // Serve the main frontend
+        .route("/", get(serve_frontend))
+        
+        // Fallback route for SPA routing
+        .fallback(serve_frontend)
         
         // Add shared state
         .with_state(app_state)
@@ -147,8 +150,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn fallback_handler() -> Html<&'static str> {
-    Html(r#"
+async fn serve_frontend() -> Result<axum::response::Response, axum::http::StatusCode> {
+    match tokio::fs::read_to_string("static/index.html").await {
+        Ok(content) => Ok(Html(content).into_response()),
+        Err(_) => {
+            // Fallback HTML if file doesn't exist
+            let fallback_html = r#"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -188,7 +195,10 @@ async fn fallback_handler() -> Html<&'static str> {
     </div>
 </body>
 </html>
-    "#)
+            "#;
+            Ok(Html(fallback_html).into_response())
+        }
+    }
 }
 
 async fn shutdown_signal() {

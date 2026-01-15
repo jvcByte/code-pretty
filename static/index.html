@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Snippet Designer</title>
+    <meta name="description" content="Create beautiful, shareable images of your code snippets">
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Skip to main content for accessibility -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    
+    <!-- Header -->
+    <header class="header" role="banner">
+        <div class="container">
+            <h1 class="logo">
+                <span class="logo-icon" aria-hidden="true">🎨</span>
+                Code Snippet Designer
+            </h1>
+            <nav class="nav" role="navigation" aria-label="Main navigation">
+                <button class="nav-toggle" aria-expanded="false" aria-controls="nav-menu" aria-label="Toggle navigation menu">
+                    <span class="hamburger"></span>
+                </button>
+                <ul class="nav-menu" id="nav-menu">
+                    <li><a href="#input-section" class="nav-link">Input</a></li>
+                    <li><a href="#theme-section" class="nav-link">Themes</a></li>
+                    <li><a href="#preview-section" class="nav-link">Preview</a></li>
+                    <li><a href="#export-section" class="nav-link">Export</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main id="main-content" class="main" role="main">
+        <div class="container">
+            <!-- Progress Indicator -->
+            <div class="progress-container" role="progressbar" aria-label="Process completion" aria-hidden="true">
+                <div class="progress-steps">
+                    <div class="progress-step active" data-step="input">
+                        <span class="step-number">1</span>
+                        <span class="step-label">Input Code</span>
+                    </div>
+                    <div class="progress-step" data-step="customize">
+                        <span class="step-number">2</span>
+                        <span class="step-label">Customize</span>
+                    </div>
+                    <div class="progress-step" data-step="export">
+                        <span class="step-number">3</span>
+                        <span class="step-label">Export</span>
+                    </div>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 33.33%"></div>
+                </div>
+            </div>
+
+            <!-- Input Section -->
+            <section id="input-section" class="section" aria-labelledby="input-heading">
+                <h2 id="input-heading" class="section-title">Input Your Code</h2>
+                
+                <!-- Input Method Tabs -->
+                <div class="input-tabs" role="tablist" aria-label="Code input methods">
+                    <button class="tab-button active" role="tab" aria-selected="true" aria-controls="upload-panel" id="upload-tab">
+                        <span class="tab-icon" aria-hidden="true">📁</span>
+                        Upload Screenshot
+                    </button>
+                    <button class="tab-button" role="tab" aria-selected="false" aria-controls="paste-panel" id="paste-tab">
+                        <span class="tab-icon" aria-hidden="true">📋</span>
+                        Paste Code
+                    </button>
+                    <button class="tab-button" role="tab" aria-selected="false" aria-controls="type-panel" id="type-tab">
+                        <span class="tab-icon" aria-hidden="true">⌨️</span>
+                        Type Code
+                    </button>
+                </div>
+
+                <!-- Upload Panel -->
+                <div class="tab-panel active" role="tabpanel" aria-labelledby="upload-tab" id="upload-panel">
+                    <div class="upload-area" id="upload-area">
+                        <input type="file" id="file-input" class="file-input" accept="image/png,image/jpg,image/jpeg" aria-describedby="upload-help">
+                        <label for="file-input" class="upload-label">
+                            <div class="upload-icon" aria-hidden="true">📷</div>
+                            <div class="upload-text">
+                                <strong>Click to upload</strong> or drag and drop
+                            </div>
+                            <div class="upload-subtext">PNG, JPG, JPEG up to 10MB</div>
+                        </label>
+                        <div id="upload-help" class="help-text">
+                            Upload a screenshot of your code and we'll extract the text using OCR
+                        </div>
+                    </div>
+                    
+                    <!-- OCR Results -->
+                    <div class="ocr-results" id="ocr-results" style="display: none;">
+                        <h3 class="ocr-title">Extracted Text</h3>
+                        <div class="ocr-confidence" id="ocr-confidence"></div>
+                        <textarea class="code-textarea" id="ocr-text" rows="10" placeholder="Extracted code will appear here..."></textarea>
+                        <div class="ocr-actions">
+                            <button class="btn btn-secondary" id="retry-ocr">Retry OCR</button>
+                            <button class="btn btn-primary" id="use-ocr-text">Use This Text</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Paste Panel -->
+                <div class="tab-panel" role="tabpanel" aria-labelledby="paste-tab" id="paste-panel">
+                    <div class="input-group">
+                        <label for="paste-textarea" class="input-label">Paste your code here:</label>
+                        <textarea class="code-textarea" id="paste-textarea" rows="15" placeholder="Paste your code here..."></textarea>
+                        <div class="help-text">
+                            Formatting and indentation will be preserved
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Type Panel -->
+                <div class="tab-panel" role="tabpanel" aria-labelledby="type-tab" id="type-panel">
+                    <div class="input-group">
+                        <label for="type-textarea" class="input-label">Type your code here:</label>
+                        <textarea class="code-textarea" id="type-textarea" rows="15" placeholder="Type your code here..."></textarea>
+                        <div class="help-text">
+                            Syntax highlighting will be applied automatically
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Language Selection -->
+                <div class="language-selection" id="language-selection" style="display: none;">
+                    <label for="language-select" class="input-label">Programming Language:</label>
+                    <select id="language-select" class="language-select">
+                        <option value="auto">Auto-detect</option>
+                        <option value="javascript">JavaScript</option>
+                        <option value="typescript">TypeScript</option>
+                        <option value="python">Python</option>
+                        <option value="rust">Rust</option>
+                        <option value="go">Go</option>
+                        <option value="java">Java</option>
+                        <option value="cpp">C++</option>
+                        <option value="c">C</option>
+                        <option value="csharp">C#</option>
+                        <option value="php">PHP</option>
+                        <option value="ruby">Ruby</option>
+                        <option value="swift">Swift</option>
+                        <option value="kotlin">Kotlin</option>
+                        <option value="html">HTML</option>
+                        <option value="css">CSS</option>
+                        <option value="sql">SQL</option>
+                        <option value="bash">Bash</option>
+                        <option value="json">JSON</option>
+                        <option value="yaml">YAML</option>
+                        <option value="xml">XML</option>
+                    </select>
+                </div>
+            </section>
+
+            <!-- Theme Customization Section -->
+            <section id="theme-section" class="section" aria-labelledby="theme-heading">
+                <h2 id="theme-heading" class="section-title">Customize Appearance</h2>
+                
+                <!-- Theme Selection -->
+                <div class="theme-selection">
+                    <h3 class="subsection-title">Choose a Theme</h3>
+                    <div class="theme-grid" id="theme-grid">
+                        <!-- Theme options will be populated by JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Custom Styling -->
+                <div class="custom-styling">
+                    <h3 class="subsection-title">Custom Styling</h3>
+                    
+                    <div class="styling-grid">
+                        <!-- Background Style -->
+                        <div class="styling-group">
+                            <label for="background-type" class="input-label">Background:</label>
+                            <select id="background-type" class="style-select">
+                                <option value="solid">Solid Color</option>
+                                <option value="gradient">Gradient</option>
+                                <option value="pattern">Pattern</option>
+                            </select>
+                            <div class="color-inputs" id="background-colors">
+                                <input type="color" id="bg-color-1" class="color-input" value="#1e1e1e">
+                                <input type="color" id="bg-color-2" class="color-input" value="#2d2d2d" style="display: none;">
+                            </div>
+                        </div>
+
+                        <!-- Window Style -->
+                        <div class="styling-group">
+                            <label for="window-style" class="input-label">Window Style:</label>
+                            <select id="window-style" class="style-select">
+                                <option value="macos">macOS</option>
+                                <option value="windows">Windows</option>
+                                <option value="terminal">Terminal</option>
+                                <option value="clean">Clean</option>
+                            </select>
+                        </div>
+
+                        <!-- Typography -->
+                        <div class="styling-group">
+                            <label for="font-family" class="input-label">Font:</label>
+                            <select id="font-family" class="style-select">
+                                <option value="JetBrains Mono">JetBrains Mono</option>
+                                <option value="Fira Code">Fira Code</option>
+                                <option value="Source Code Pro">Source Code Pro</option>
+                                <option value="Monaco">Monaco</option>
+                                <option value="Consolas">Consolas</option>
+                            </select>
+                            <input type="range" id="font-size" class="range-input" min="12" max="24" value="14">
+                            <span class="range-value" id="font-size-value">14px</span>
+                        </div>
+
+                        <!-- Padding -->
+                        <div class="styling-group">
+                            <label for="padding" class="input-label">Padding:</label>
+                            <input type="range" id="padding" class="range-input" min="16" max="64" value="32">
+                            <span class="range-value" id="padding-value">32px</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Preview Section -->
+            <section id="preview-section" class="section" aria-labelledby="preview-heading">
+                <h2 id="preview-heading" class="section-title">Preview</h2>
+                
+                <div class="preview-container">
+                    <div class="preview-area" id="preview-area">
+                        <div class="preview-placeholder">
+                            <div class="placeholder-icon" aria-hidden="true">👁️</div>
+                            <div class="placeholder-text">Your code preview will appear here</div>
+                        </div>
+                    </div>
+                    
+                    <div class="preview-controls">
+                        <button class="btn btn-secondary" id="refresh-preview">
+                            <span aria-hidden="true">🔄</span>
+                            Refresh Preview
+                        </button>
+                        <div class="preview-info" id="preview-info">
+                            <span class="info-item">Lines: <span id="line-count">0</span></span>
+                            <span class="info-item">Characters: <span id="char-count">0</span></span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Export Section -->
+            <section id="export-section" class="section" aria-labelledby="export-heading">
+                <h2 id="export-heading" class="section-title">Export & Download</h2>
+                
+                <div class="export-options">
+                    <div class="export-grid">
+                        <!-- Format Selection -->
+                        <div class="export-group">
+                            <label for="export-format" class="input-label">Format:</label>
+                            <select id="export-format" class="style-select">
+                                <option value="png">PNG (Recommended)</option>
+                                <option value="jpg">JPG</option>
+                                <option value="svg">SVG (Vector)</option>
+                            </select>
+                        </div>
+
+                        <!-- Resolution Selection -->
+                        <div class="export-group">
+                            <label for="export-resolution" class="input-label">Resolution:</label>
+                            <select id="export-resolution" class="style-select">
+                                <option value="1x">Standard (1x)</option>
+                                <option value="2x">High (2x)</option>
+                                <option value="3x">Ultra (3x)</option>
+                            </select>
+                        </div>
+
+                        <!-- Quality (for JPG) -->
+                        <div class="export-group" id="quality-group" style="display: none;">
+                            <label for="export-quality" class="input-label">Quality:</label>
+                            <input type="range" id="export-quality" class="range-input" min="60" max="100" value="90">
+                            <span class="range-value" id="quality-value">90%</span>
+                        </div>
+                    </div>
+
+                    <!-- Export Actions -->
+                    <div class="export-actions">
+                        <button class="btn btn-primary btn-large" id="generate-btn">
+                            <span class="btn-icon" aria-hidden="true">🎨</span>
+                            Generate Image
+                        </button>
+                        <button class="btn btn-success btn-large" id="download-btn" style="display: none;">
+                            <span class="btn-icon" aria-hidden="true">⬇️</span>
+                            Download Image
+                        </button>
+                    </div>
+
+                    <!-- Progress Indicator -->
+                    <div class="generation-progress" id="generation-progress" style="display: none;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="generation-progress-fill"></div>
+                        </div>
+                        <div class="progress-text" id="generation-progress-text">Generating image...</div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer" role="contentinfo">
+        <div class="container">
+            <p>&copy; 2024 Code Snippet Designer. Built with ❤️ and Rust.</p>
+        </div>
+    </footer>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading-overlay" style="display: none;" role="dialog" aria-labelledby="loading-title" aria-modal="true">
+        <div class="loading-content">
+            <div class="loading-spinner" aria-hidden="true"></div>
+            <h3 id="loading-title" class="loading-title">Processing...</h3>
+            <p class="loading-text" id="loading-text">Please wait while we process your request.</p>
+        </div>
+    </div>
+
+    <!-- Error Toast -->
+    <div class="toast toast-error" id="error-toast" style="display: none;" role="alert" aria-live="assertive">
+        <div class="toast-content">
+            <span class="toast-icon" aria-hidden="true">❌</span>
+            <span class="toast-message" id="error-message"></span>
+            <button class="toast-close" aria-label="Close error message">&times;</button>
+        </div>
+    </div>
+
+    <!-- Success Toast -->
+    <div class="toast toast-success" id="success-toast" style="display: none;" role="alert" aria-live="polite">
+        <div class="toast-content">
+            <span class="toast-icon" aria-hidden="true">✅</span>
+            <span class="toast-message" id="success-message"></span>
+            <button class="toast-close" aria-label="Close success message">&times;</button>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
