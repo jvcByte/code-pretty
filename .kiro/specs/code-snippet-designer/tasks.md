@@ -54,7 +54,7 @@
     - _Requirements: 1.4, 1.5_
 
 - [ ] 5. Implement syntax highlighting and language detection
-  - [ ] 5.1 Set up syntect for code syntax highlighting
+  - [x] 5.1 Set up syntect for code syntax highlighting
     - Configure syntect with SyntaxSet and popular programming language definitions
     - Implement syntax highlighting application with theme integration
     - Create SyntaxHighlighter service with caching for performance

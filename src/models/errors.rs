@@ -20,6 +20,9 @@ pub enum AppError {
     #[error("Language detection failed: {message}")]
     LanguageDetectionError { message: String },
     
+    #[error("Syntax highlighting failed: {message}")]
+    SyntaxHighlightingError { message: String },
+    
     #[error("Validation error: {message}")]
     ValidationError { message: String },
     
@@ -162,6 +165,26 @@ impl ErrorHandler {
                     },
                 ],
                 retry_after: None,
+                details: Some(message),
+            },
+            
+            AppError::SyntaxHighlightingError { message } => ErrorResponse {
+                message: "Syntax highlighting failed".to_string(),
+                error_code: "SYNTAX_HIGHLIGHTING_FAILED".to_string(),
+                severity: ErrorSeverity::Medium,
+                actions: vec![
+                    ErrorAction {
+                        action_type: ErrorActionType::Retry,
+                        label: "Try Again".to_string(),
+                        description: "Retry with syntax highlighting".to_string(),
+                    },
+                    ErrorAction {
+                        action_type: ErrorActionType::TryAlternative,
+                        label: "Use Plain Text".to_string(),
+                        description: "Continue without syntax highlighting".to_string(),
+                    },
+                ],
+                retry_after: Some(1),
                 details: Some(message),
             },
             
@@ -336,6 +359,7 @@ impl ErrorHandler {
             AppError::FileUploadError { .. } |
             AppError::StorageError { .. } |
             AppError::TimeoutError { .. } |
+            AppError::SyntaxHighlightingError { .. } |
             AppError::InternalError { .. }
         )
     }
@@ -349,6 +373,7 @@ impl ErrorHandler {
             AppError::StorageError { .. } => Duration::from_secs(5),
             AppError::TimeoutError { .. } => Duration::from_secs(3),
             AppError::RateLimitError { .. } => Duration::from_secs(60),
+            AppError::SyntaxHighlightingError { .. } => Duration::from_secs(1),
             AppError::InternalError { .. } => Duration::from_secs(5),
             _ => Duration::from_secs(1),
         }
@@ -375,6 +400,10 @@ impl AppError {
 
     pub fn language_detection_failed(message: impl Into<String>) -> Self {
         AppError::LanguageDetectionError { message: message.into() }
+    }
+
+    pub fn syntax_highlighting_failed(message: impl Into<String>) -> Self {
+        AppError::SyntaxHighlightingError { message: message.into() }
     }
 
     pub fn validation_failed(message: impl Into<String>) -> Self {

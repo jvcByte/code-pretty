@@ -6,3 +6,4 @@ pub mod image_generator;
 pub mod theme_manager;
 pub mod language_detector;
 pub mod file_storage;
+pub mod syntax_highlighter;
