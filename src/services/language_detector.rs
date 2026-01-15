@@ -3,7 +3,7 @@ use crate::services::syntax_highlighter::SyntaxHighlighter;
 use std::collections::HashMap;
 
 /// Result of language detection
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LanguageResult {
     pub language: String,
     pub confidence: f32,
@@ -64,22 +64,97 @@ impl LanguageDetector {
         self.syntax_highlighter.get_supported_extensions()
     }
 
+    /// Validates if a language is supported and returns a LanguageResult for manual selection
+    pub fn validate_manual_selection(&self, language: &str) -> Result<LanguageResult, AppError> {
+        let supported_languages = self.get_supported_languages();
+        
+        // Check if the language is supported (case-insensitive)
+        let normalized_language = language.trim();
+        let found_language = supported_languages
+            .iter()
+            .find(|&lang| lang.to_lowercase() == normalized_language.to_lowercase())
+            .cloned();
+
+        match found_language {
+            Some(lang) => Ok(LanguageResult {
+                language: lang,
+                confidence: 1.0, // Manual selection has highest confidence
+                alternatives: vec![],
+            }),
+            None => {
+                // Find similar languages for suggestions
+                let alternatives = self.find_similar_languages(normalized_language, &supported_languages);
+                
+                Err(AppError::LanguageDetectionError {
+                    message: format!(
+                        "Language '{}' is not supported. Did you mean one of: {}?", 
+                        language,
+                        alternatives.join(", ")
+                    )
+                })
+            }
+        }
+    }
+
+    /// Creates a LanguageResult for manual override (bypasses validation)
+    pub fn create_manual_override(&self, language: &str) -> LanguageResult {
+        LanguageResult {
+            language: language.to_string(),
+            confidence: 1.0, // Manual selection has highest confidence
+            alternatives: vec![],
+        }
+    }
+
+    /// Finds similar language names for suggestions
+    fn find_similar_languages(&self, target: &str, supported: &[String]) -> Vec<String> {
+        let target_lower = target.to_lowercase();
+        let mut suggestions = Vec::new();
+
+        // Find languages that contain the target as substring
+        for lang in supported {
+            let lang_lower = lang.to_lowercase();
+            if lang_lower.contains(&target_lower) || target_lower.contains(&lang_lower) {
+                suggestions.push(lang.clone());
+            }
+        }
+
+        // If no substring matches, find languages with similar starting letters
+        if suggestions.is_empty() {
+            for lang in supported {
+                let lang_lower = lang.to_lowercase();
+                if !target_lower.is_empty() && !lang_lower.is_empty() {
+                    if lang_lower.starts_with(&target_lower[..1]) {
+                        suggestions.push(lang.clone());
+                    }
+                }
+            }
+        }
+
+        // Limit to 3 suggestions
+        suggestions.truncate(3);
+        suggestions
+    }
+
     /// Pattern-based language detection as fallback
     fn detect_by_patterns(&self, code: &str) -> LanguageResult {
         let mut scores: HashMap<String, f32> = HashMap::new();
         
         for (language, patterns) in &self.language_patterns {
             let mut score = 0.0;
+            let mut pattern_matches = 0;
             
             for pattern in patterns {
                 if code.contains(pattern) {
                     score += 1.0;
+                    pattern_matches += 1;
                 }
             }
             
-            if score > 0.0 {
-                // Normalize score by number of patterns
-                scores.insert(language.clone(), score / patterns.len() as f32);
+            if pattern_matches > 0 {
+                // Weight score by both number of matches and pattern strength
+                let pattern_strength = pattern_matches as f32 / patterns.len() as f32;
+                let weighted_score = score * pattern_strength;
+                scores.insert(language.clone(), weighted_score);
             }
         }
 
@@ -96,6 +171,16 @@ impl LanguageDetector {
         sorted_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
         let best_match = &sorted_scores[0];
+        
+        // Only return a language if it has a reasonable confidence
+        if best_match.1 < 0.3 {
+            return LanguageResult {
+                language: "Plain Text".to_string(),
+                confidence: 0.1,
+                alternatives: vec![],
+            };
+        }
+
         let alternatives: Vec<String> = sorted_scores
             .iter()
             .skip(1)
@@ -105,7 +190,7 @@ impl LanguageDetector {
 
         LanguageResult {
             language: best_match.0.clone(),
-            confidence: best_match.1.min(0.8), // Cap confidence for pattern-based detection
+            confidence: (best_match.1 / 5.0).min(0.8), // Normalize and cap confidence
             alternatives,
         }
     }
@@ -115,105 +200,122 @@ impl LanguageDetector {
         let mut patterns = HashMap::new();
 
         patterns.insert("Rust".to_string(), vec![
-            "fn ", "let ", "mut ", "impl ", "struct ", "enum ", "trait ",
+            "fn main()", "fn ", "let mut ", "impl ", "struct ", "enum ", "trait ",
             "use ", "mod ", "pub ", "match ", "if let", "while let",
-            "Result<", "Option<", "Vec<", "&str", "String::", "println!",
+            "Result<", "Option<", "Vec<", "&str", "String::", "println!(",
+            "cargo", ".unwrap()", ".expect(",
         ]);
 
         patterns.insert("JavaScript".to_string(), vec![
-            "function ", "const ", "let ", "var ", "=&gt; ", "console.log",
+            "function(", "function ", "const ", "let ", "var ", "=> ", "console.log(",
             "document.", "window.", "require(", "import ", "export ",
             "async ", "await ", "Promise", ".then(", ".catch(",
+            "JSON.", "Array.", "Object.",
         ]);
 
         patterns.insert("TypeScript".to_string(), vec![
             "interface ", "type ", ": string", ": number", ": boolean",
             "function ", "const ", "let ", "import ", "export ",
             "async ", "await ", "Promise<", "Array<", "Record<",
+            "as ", "extends ", "implements ",
         ]);
 
         patterns.insert("Python".to_string(), vec![
-            "def ", "class ", "import ", "from ", "if __name__",
+            "def ", "class ", "import ", "from ", "if __name__ == '__main__':",
             "print(", "len(", "range(", "for ", "while ", "elif ",
             "try:", "except:", "finally:", "with ", "lambda ",
+            "self.", "__init__", "pass", "None",
         ]);
 
         patterns.insert("Java".to_string(), vec![
-            "public class", "private ", "protected ", "public static",
-            "import java.", "System.out", "String ", "int ", "void ",
+            "public class ", "private ", "protected ", "public static void main",
+            "import java.", "System.out.", "String ", "int ", "void ",
             "new ", "extends ", "implements ", "interface ", "@Override",
+            "public ", "static ", "final ",
         ]);
 
         patterns.insert("C++".to_string(), vec![
-            "#include", "using namespace", "std::", "cout <<", "cin >>",
-            "int main", "class ", "struct ", "template<", "vector<",
+            "#include <", "using namespace std", "std::", "cout <<", "cin >>",
+            "int main(", "class ", "struct ", "template<", "vector<",
             "string ", "void ", "const ", "auto ", "nullptr",
+            "::", "->", "delete ", "new ",
         ]);
 
         patterns.insert("C".to_string(), vec![
-            "#include", "int main", "printf(", "scanf(", "malloc(",
+            "#include <", "int main(", "printf(", "scanf(", "malloc(",
             "free(", "struct ", "typedef ", "void ", "char ",
             "FILE *", "NULL", "sizeof(", "return 0;",
+            "#define", "static ", "extern ",
         ]);
 
         patterns.insert("Go".to_string(), vec![
-            "package ", "import ", "func ", "var ", "const ",
+            "package main", "package ", "import ", "func main()", "func ", "var ", "const ",
             "type ", "struct {", "interface {", "go ", "defer ",
             "make(", "len(", "cap(", "range ", "chan ",
+            "fmt.", "err != nil",
         ]);
 
         patterns.insert("C#".to_string(), vec![
-            "using System", "namespace ", "public class", "private ",
-            "public static", "Console.", "string ", "int ", "void ",
+            "using System", "namespace ", "public class ", "private ",
+            "public static void Main", "Console.", "string ", "int ", "void ",
             "new ", "class ", "interface ", "struct ", "[Attribute]",
+            "public ", "private ", "protected ",
         ]);
 
         patterns.insert("PHP".to_string(), vec![
-            "&lt;?php", "$", "echo ", "print ", "function ", "class ",
+            "<?php", "$_", "echo ", "print ", "function ", "class ",
             "public ", "private ", "protected ", "require ", "include ",
             "array(", "foreach ", "isset(", "empty(", "die(",
+            "->", "::", "namespace ",
         ]);
 
         patterns.insert("Ruby".to_string(), vec![
             "def ", "class ", "module ", "require ", "include ",
-            "puts ", "print ", "p ", "end", "do |", "each do",
+            "puts ", "print ", "p ", "end\n", "do |", ".each do",
             "attr_", "initialize", "self.", "@", "||=",
+            "rescue ", "ensure ", "yield",
         ]);
 
         patterns.insert("Swift".to_string(), vec![
             "func ", "var ", "let ", "class ", "struct ", "enum ",
             "import ", "protocol ", "extension ", "if let", "guard let",
             "print(", "String", "Int", "Bool", "Array<", "Dictionary<",
+            "override ", "init(", "deinit",
         ]);
 
         patterns.insert("Kotlin".to_string(), vec![
-            "fun ", "val ", "var ", "class ", "object ", "interface ",
+            "fun main(", "fun ", "val ", "var ", "class ", "object ", "interface ",
             "import ", "package ", "when ", "is ", "as ", "in ",
             "println(", "String", "Int", "Boolean", "List<", "Map<",
+            "override ", "companion object",
         ]);
 
         patterns.insert("HTML".to_string(), vec![
-            "&lt;html", "&lt;head", "&lt;body", "&lt;div", "&lt;span", "&lt;p",
-            "&lt;a href", "&lt;img", "&lt;script", "&lt;style", "&lt;link",
-            "class=", "id=", "&lt;!DOCTYPE", "&lt;meta", "&lt;title",
+            "<!DOCTYPE html>", "<html", "<head>", "<body>", "<div", "<span", "<p>",
+            "<a href", "<img", "<script", "<style", "<link",
+            "class=", "id=", "<meta", "<title>",
+            "</html>", "</body>", "</head>",
         ]);
 
         patterns.insert("CSS".to_string(), vec![
-            "{", "}", ":", ";", "color:", "background:", "margin:",
+            " {", "}", ": ", "; ", "color:", "background:", "margin:",
             "padding:", "font-", "border:", "width:", "height:",
-            ".class", "#id", "@media", "px", "em", "rem",
+            ".class", "#id", "@media", "px;", "em;", "rem;",
+            "display:", "position:", "flex",
         ]);
 
         patterns.insert("SQL".to_string(), vec![
-            "SELECT ", "FROM ", "WHERE ", "INSERT ", "UPDATE ",
-            "DELETE ", "CREATE ", "ALTER ", "DROP ", "JOIN ",
+            "SELECT ", "FROM ", "WHERE ", "INSERT INTO", "UPDATE ",
+            "DELETE FROM", "CREATE TABLE", "ALTER TABLE", "DROP ", "JOIN ",
             "GROUP BY", "ORDER BY", "HAVING ", "UNION ", "INDEX",
+            "PRIMARY KEY", "FOREIGN KEY", "NOT NULL",
         ]);
 
         patterns.insert("Shell".to_string(), vec![
-            "#!/bin/", "echo ", "cd ", "ls ", "grep ", "awk ",
+            "#!/bin/bash", "#!/bin/sh", "echo ", "cd ", "ls ", "grep ", "awk ",
             "sed ", "cat ", "chmod ", "chown ", "sudo ", "export ",
-            "if [", "then", "fi", "for ", "while ", "case ",
+            "if [ ", "then", "fi", "for ", "while ", "case ",
+            "$1", "$@", "$(", "${",
         ]);
 
         patterns
@@ -292,5 +394,64 @@ function hello() {
         let languages = detector.get_supported_languages();
         assert!(!languages.is_empty());
         assert!(languages.contains(&"Rust".to_string()));
+    }
+
+    #[test]
+    fn test_manual_language_selection_valid() {
+        let detector = LanguageDetector::new().unwrap();
+        
+        // Test valid language selection
+        let result = detector.validate_manual_selection("Rust");
+        assert!(result.is_ok());
+        let lang_result = result.unwrap();
+        assert_eq!(lang_result.language, "Rust");
+        assert_eq!(lang_result.confidence, 1.0);
+        
+        // Test case-insensitive selection
+        let result = detector.validate_manual_selection("rust");
+        assert!(result.is_ok());
+        let lang_result = result.unwrap();
+        assert_eq!(lang_result.language, "Rust");
+    }
+
+    #[test]
+    fn test_manual_language_selection_invalid() {
+        let detector = LanguageDetector::new().unwrap();
+        
+        // Test invalid language selection
+        let result = detector.validate_manual_selection("InvalidLanguage");
+        assert!(result.is_err());
+        
+        // Test that error message contains suggestions
+        if let Err(AppError::LanguageDetectionError { message }) = result {
+            assert!(message.contains("not supported"));
+            assert!(message.contains("Did you mean"));
+        }
+    }
+
+    #[test]
+    fn test_manual_override() {
+        let detector = LanguageDetector::new().unwrap();
+        
+        // Test manual override (bypasses validation)
+        let result = detector.create_manual_override("CustomLanguage");
+        assert_eq!(result.language, "CustomLanguage");
+        assert_eq!(result.confidence, 1.0);
+        assert!(result.alternatives.is_empty());
+    }
+
+    #[test]
+    fn test_similar_language_suggestions() {
+        let detector = LanguageDetector::new().unwrap();
+        
+        // Test partial match suggestions
+        let result = detector.validate_manual_selection("Java");
+        if result.is_ok() {
+            // If Java is supported, test with a partial match
+            let result = detector.validate_manual_selection("Jav");
+            if let Err(AppError::LanguageDetectionError { message }) = result {
+                assert!(message.contains("Java"));
+            }
+        }
     }
 }

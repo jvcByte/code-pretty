@@ -53,7 +53,7 @@
     - Handle special characters and code formatting preservation
     - _Requirements: 1.4, 1.5_
 
-- [ ] 5. Implement syntax highlighting and language detection
+- [x] 5. Implement syntax highlighting and language detection
   - [x] 5.1 Set up syntect for code syntax highlighting
     - Configure syntect with SyntaxSet and popular programming language definitions
     - Implement syntax highlighting application with theme integration
@@ -61,7 +61,7 @@
     - Add fallback mechanism for unknown or unsupported languages
     - _Requirements: 2.3, 2.4, 2.5_
 
-  - [ ] 5.2 Create language detection service
+  - [x] 5.2 Create language detection service
     - Implement LanguageDetector with heuristic-based detection algorithm
     - Add support for common programming languages (JavaScript, Python, Rust, Go, Java, C++, etc.)
     - Create LanguageResult struct with confidence scoring and alternatives
