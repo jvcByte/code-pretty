@@ -17,6 +17,9 @@ pub enum AppError {
     #[error("Theme not found: {theme_id}")]
     ThemeNotFound { theme_id: String },
     
+    #[error("Theme error: {message}")]
+    ThemeError { message: String },
+    
     #[error("Language detection failed: {message}")]
     LanguageDetectionError { message: String },
     
@@ -151,6 +154,26 @@ impl ErrorHandler {
                 ],
                 retry_after: None,
                 details: Some(format!("Theme '{}' does not exist", theme_id)),
+            },
+            
+            AppError::ThemeError { message } => ErrorResponse {
+                message: "Theme configuration error".to_string(),
+                error_code: "THEME_ERROR".to_string(),
+                severity: ErrorSeverity::Medium,
+                actions: vec![
+                    ErrorAction {
+                        action_type: ErrorActionType::EditInput,
+                        label: "Fix Theme".to_string(),
+                        description: "Correct the theme configuration".to_string(),
+                    },
+                    ErrorAction {
+                        action_type: ErrorActionType::ChangeSettings,
+                        label: "Use Default Theme".to_string(),
+                        description: "Switch to a default theme".to_string(),
+                    },
+                ],
+                retry_after: None,
+                details: Some(message),
             },
             
             AppError::LanguageDetectionError { message } => ErrorResponse {
@@ -396,6 +419,10 @@ impl AppError {
 
     pub fn theme_not_found(theme_id: impl Into<String>) -> Self {
         AppError::ThemeNotFound { theme_id: theme_id.into() }
+    }
+
+    pub fn theme_error(message: impl Into<String>) -> Self {
+        AppError::ThemeError { message: message.into() }
     }
 
     pub fn language_detection_failed(message: impl Into<String>) -> Self {

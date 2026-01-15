@@ -68,15 +68,15 @@
     - Add manual language selection override capability
     - _Requirements: 2.4, 2.5_
 
-- [ ] 6. Implement theme management system
-  - [ ] 6.1 Create built-in theme definitions and ThemeManager
+- [x] 6. Implement theme management system
+  - [x] 6.1 Create built-in theme definitions and ThemeManager
     - Define default themes (dark, light, high-contrast, popular editor themes like VS Code Dark, Monokai)
     - Implement ThemeManager struct with theme loading, validation, and caching
     - Create theme serialization/deserialization with serde
     - Add theme storage and retrieval mechanisms
     - _Requirements: 3.1, 3.5_
 
-  - [ ] 6.2 Add theme customization capabilities
+  - [x] 6.2 Add theme customization capabilities
     - Implement color customization for syntax highlighting with SyntaxColors struct
     - Add BackgroundStyle options (solid, gradient, pattern) with BackgroundType enum
     - Create WindowStyle variations (macOS, Windows, terminal, clean) with proper rendering

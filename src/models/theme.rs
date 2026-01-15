@@ -115,7 +115,7 @@ impl Theme {
     }
 
     /// Basic hex color validation
-    fn is_valid_color(color: &str) -> bool {
+    pub fn is_valid_color(color: &str) -> bool {
         if !color.starts_with('#') {
             return false;
         }
