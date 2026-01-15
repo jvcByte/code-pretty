@@ -3,6 +3,10 @@ name = "code-snippet-designer"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+tesseract = ["dep:tesseract"]
+
 [dependencies]
 # Web framework
 axum = "0.7"
@@ -22,6 +26,7 @@ resvg = "0.37"
 
 # OCR - commented out until system dependencies are available
 # tesseract = "0.13"
+tesseract = { version = "0.13", optional = true }
 
 # Syntax highlighting
 syntect = "5.1"
@@ -33,6 +38,7 @@ anyhow = "1.0"
 # Utilities
 uuid = { version = "1.0", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
+regex = "1.10"
 
 # Logging
 tracing = "0.1"
