@@ -83,15 +83,15 @@
     - Support TypographyStyle customization (font family, size, line spacing)
     - _Requirements: 3.2, 3.4, 3.5_
 
-- [ ] 7. Implement image generation engine
-  - [ ] 7.1 Create core ImageGenerator with rendering system
+- [x] 7. Implement image generation engine
+  - [x] 7.1 Create core ImageGenerator with rendering system
     - Set up ImageGenerator struct with image-rs for high-quality image generation
     - Implement code layout calculation and text rendering with proper spacing
     - Integrate syntax highlighting application to rendered text using syntect
     - Create responsive layout system for different code lengths and screen sizes
     - _Requirements: 3.3, 4.1, 4.3_
 
-  - [ ] 7.2 Add advanced rendering features
+  - [x] 7.2 Add advanced rendering features
     - Implement window frame rendering with different WindowStyle options
     - Add background rendering supporting solid colors, gradients, and patterns
     - Create padding and margin calculations for proper visual spacing
