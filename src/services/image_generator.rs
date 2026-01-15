@@ -1,7 +1,8 @@
 use crate::models::errors::AppError;
 use crate::models::theme::{Theme, BackgroundType, WindowStyleType};
-use crate::services::syntax_highlighter::{SyntaxHighlighter, HighlightResult, HighlightedLine, HighlightedSegment};
+use crate::services::syntax_highlighter::{SyntaxHighlighter, HighlightResult};
 use image::{ImageBuffer, Rgba, RgbaImage};
+use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -15,14 +16,14 @@ pub struct ExportOptions {
     pub height: Option<u32>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ImageFormat {
     PNG,
     JPEG,
     SVG,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Resolution {
     Standard, // 1x
     High,     // 2x
@@ -924,7 +925,7 @@ impl ImageGenerator {
         highlight_result: &HighlightResult,
         dimensions: &ImageDimensions,
         layout_config: &LayoutConfig,
-        theme: &Theme,
+        _theme: &Theme,
     ) -> Result<(), AppError> {
         let font_metrics = self.get_font_metrics(layout_config.font_size)?;
         let mut current_y = dimensions.code_area_y as f32;

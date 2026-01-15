@@ -98,15 +98,15 @@
     - Support for line numbers, code formatting, and typography styling
     - _Requirements: 3.2, 3.4, 3.5_
 
-- [ ] 8. Implement export and download functionality
-  - [ ] 8.1 Create image export service with multiple formats
+- [x] 8. Implement export and download functionality
+  - [x] 8.1 Create image export service with multiple formats
     - Implement PNG export with configurable quality settings using image-rs
     - Add JPG export with compression options and quality control
     - Support SVG export for vector graphics using resvg
     - Create ExportOptions struct with different resolution options (standard, high, ultra)
     - _Requirements: 4.1, 4.2, 4.3_
 
-  - [ ] 8.2 Add download management and file serving
+  - [x] 8.2 Add download management and file serving
     - Implement file download endpoints with proper HTTP headers and content types
     - Add progress tracking for large image generation with async processing
     - Create temporary file cleanup after download with automatic expiration

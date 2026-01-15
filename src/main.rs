@@ -20,7 +20,7 @@ mod services;
 mod models;
 mod utils;
 
-use handlers::{health, upload};
+use handlers::{health, upload, generate};
 use services::file_storage::FileStorageService;
 use utils::config::AppConfig;
 
@@ -66,6 +66,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    // Start cleanup task for expired downloads
+    let cleanup_storage_for_downloads = storage_service.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(1800)); // Run every 30 minutes
+        loop {
+            interval.tick().await;
+            
+            // Create download service for cleanup
+            if let Ok(export_service) = services::export_service::ExportService::new() {
+                let download_service = services::download_service::DownloadService::new(
+                    std::sync::Arc::new(export_service),
+                    std::sync::Arc::new(cleanup_storage_for_downloads.clone())
+                );
+                
+                if let Err(e) = download_service.cleanup_expired_downloads().await {
+                    tracing::error!("Failed to cleanup expired downloads: {}", e);
+                }
+            }
+        }
+    });
+
     // Create shared state
     let app_state = AppState {
         config: Arc::new(config.clone()),
@@ -86,6 +107,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         
         // File upload endpoint
         .route("/api/upload", axum::routing::post(upload::upload_image))
+        
+        // Image generation and download endpoints
+        .route("/api/generate", axum::routing::post(generate::generate_image))
+        .route("/api/generate/progress/:download_id", get(generate::check_progress))
+        .route("/api/generate/download/:download_id", get(generate::download_file))
+        .route("/api/generate/options", get(generate::get_export_options))
+        .route("/api/generate/stats", get(generate::get_download_stats))
         
         // Fallback route for the frontend
         .fallback(fallback_handler)
