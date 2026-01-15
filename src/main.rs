@@ -20,14 +20,20 @@ mod services;
 mod models;
 mod utils;
 
-use handlers::{health, upload, generate};
+use handlers::{health, upload, generate, process, themes};
 use services::file_storage::FileStorageService;
+use services::session_manager::SessionManager;
+use services::cache_manager::CacheManager;
+use services::rate_limiter::RateLimiter;
 use utils::config::AppConfig;
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<AppConfig>,
     pub storage: Arc<FileStorageService>,
+    pub session_manager: Arc<SessionManager>,
+    pub cache_manager: Arc<CacheManager<String, Vec<u8>>>,
+    pub rate_limiter: Arc<RateLimiter>,
 }
 
 #[tokio::main]
@@ -54,6 +60,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             e
         })?;
 
+    // Initialize session manager (1 hour expiry)
+    let session_manager = SessionManager::with_expiry(std::time::Duration::from_secs(3600));
+
+    // Initialize cache manager (30 minute TTL, max 1000 items)
+    let cache_manager = CacheManager::with_ttl_and_max_size(
+        std::time::Duration::from_secs(1800),
+        1000
+    );
+
+    // Initialize rate limiter (100 requests per minute)
+    let rate_limiter = RateLimiter::with_config(services::rate_limiter::RateLimitConfig {
+        max_requests: 100,
+        window_duration: std::time::Duration::from_secs(60),
+    });
+
     // Start cleanup task for temporary files
     let cleanup_storage = storage_service.clone();
     tokio::spawn(async move {
@@ -63,6 +84,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Err(e) = cleanup_storage.cleanup_temp_files().await {
                 tracing::error!("Failed to cleanup temporary files: {}", e);
             }
+        }
+    });
+
+    // Start cleanup task for expired sessions
+    let cleanup_session_manager = session_manager.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(600)); // Run every 10 minutes
+        loop {
+            interval.tick().await;
+            if let Err(e) = cleanup_session_manager.cleanup_expired_sessions().await {
+                tracing::error!("Failed to cleanup expired sessions: {}", e);
+            }
+        }
+    });
+
+    // Start cleanup task for expired cache items
+    let cleanup_cache_manager = cache_manager.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(300)); // Run every 5 minutes
+        loop {
+            interval.tick().await;
+            cleanup_cache_manager.cleanup_expired().await;
+        }
+    });
+
+    // Start cleanup task for expired rate limit records
+    let cleanup_rate_limiter = rate_limiter.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(300)); // Run every 5 minutes
+        loop {
+            interval.tick().await;
+            cleanup_rate_limiter.cleanup_expired().await;
         }
     });
 
@@ -91,6 +144,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app_state = AppState {
         config: Arc::new(config.clone()),
         storage: Arc::new(storage_service),
+        session_manager: Arc::new(session_manager),
+        cache_manager: Arc::new(cache_manager),
+        rate_limiter: Arc::new(rate_limiter),
     };
 
     // Create CORS layer
@@ -107,6 +163,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         
         // File upload endpoint
         .route("/api/upload", axum::routing::post(upload::upload_image))
+        
+        // Text processing endpoints
+        .route("/api/process", axum::routing::post(process::process_text))
+        .route("/api/process/validate", axum::routing::post(process::validate_code))
+        .route("/api/process/languages", get(process::get_supported_languages))
+        
+        // Theme endpoints
+        .route("/api/themes", get(themes::list_themes))
+        .route("/api/themes/info", get(themes::list_theme_info))
+        .route("/api/themes/default", get(themes::get_default_theme))
+        .route("/api/themes/options", get(themes::get_customization_options))
+        .route("/api/themes/:theme_id", get(themes::get_theme))
+        .route("/api/themes/type/:theme_type", get(themes::get_themes_by_type))
+        .route("/api/themes/customize", axum::routing::post(themes::customize_theme))
+        .route("/api/themes/validate", axum::routing::post(themes::validate_theme))
         
         // Image generation and download endpoints
         .route("/api/generate", axum::routing::post(generate::generate_image))

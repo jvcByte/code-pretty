@@ -38,6 +38,9 @@ pub enum AppError {
     #[error("Rate limit exceeded: {message}")]
     RateLimitError { message: String },
     
+    #[error("Session error: {message}")]
+    SessionError { message: String },
+    
     #[error("Internal server error: {message}")]
     InternalError { message: String },
 }
@@ -276,6 +279,21 @@ impl ErrorHandler {
                 details: Some(message),
             },
             
+            AppError::SessionError { message } => ErrorResponse {
+                message: "Session error".to_string(),
+                error_code: "SESSION_ERROR".to_string(),
+                severity: ErrorSeverity::Medium,
+                actions: vec![
+                    ErrorAction {
+                        action_type: ErrorActionType::Retry,
+                        label: "Refresh".to_string(),
+                        description: "Refresh the page to start a new session".to_string(),
+                    },
+                ],
+                retry_after: None,
+                details: Some(message),
+            },
+            
             AppError::InternalError { message } => ErrorResponse {
                 message: "An unexpected error occurred".to_string(),
                 error_code: "INTERNAL_ERROR".to_string(),
@@ -447,6 +465,10 @@ impl AppError {
 
     pub fn rate_limited(message: impl Into<String>) -> Self {
         AppError::RateLimitError { message: message.into() }
+    }
+
+    pub fn session_error(message: impl Into<String>) -> Self {
+        AppError::SessionError { message: message.into() }
     }
 
     pub fn internal_error(message: impl Into<String>) -> Self {

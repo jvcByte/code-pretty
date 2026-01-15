@@ -9,3 +9,6 @@ pub mod theme_manager;
 pub mod language_detector;
 pub mod file_storage;
 pub mod syntax_highlighter;
+pub mod session_manager;
+pub mod cache_manager;
+pub mod rate_limiter;
