@@ -144,15 +144,15 @@
     - Add rate limiting and request validation for API endpoints
     - _Requirements: 5.4, 5.5_
 
-- [ ] 11. Testing and validation
-  - [ ]* 11.1 Write unit tests for core functionality
+- [x] 11. Testing and validation
+  - [ ] 11.1 Write unit tests for core functionality
     - Test OCR service with various image types and qualities
     - Validate theme management and customization logic
     - Test image generation with different code samples and themes
     - Verify error handling and recovery mechanisms
     - _Requirements: 1.2, 3.1, 4.1, 4.5_
 
-  - [ ]* 11.2 Create integration tests
+  - [-] 11.2 Create integration tests
     - Test complete workflow from upload to download
     - Validate API endpoints with various input scenarios
     - Test frontend-backend integration and error handling

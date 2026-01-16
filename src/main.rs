@@ -15,26 +15,7 @@ use tower_http::{
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-mod handlers;
-mod services;
-mod models;
-mod utils;
-
-use handlers::{health, upload, generate, process, themes};
-use services::file_storage::FileStorageService;
-use services::session_manager::SessionManager;
-use services::cache_manager::CacheManager;
-use services::rate_limiter::RateLimiter;
-use utils::config::AppConfig;
-
-#[derive(Clone)]
-pub struct AppState {
-    pub config: Arc<AppConfig>,
-    pub storage: Arc<FileStorageService>,
-    pub session_manager: Arc<SessionManager>,
-    pub cache_manager: Arc<CacheManager<String, Vec<u8>>>,
-    pub rate_limiter: Arc<RateLimiter>,
-}
+use code_snippet_designer::{AppState, handlers, services, utils};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -50,27 +31,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("Starting Code Snippet Designer server");
 
     // Load configuration
-    let config = AppConfig::from_env();
+    let config = utils::config::AppConfig::from_env();
     tracing::info!("Configuration loaded: {:?}", config);
 
     // Initialize file storage service
-    let storage_service = FileStorageService::new(&config.temp_dir)
+    let storage_service = services::file_storage::FileStorageService::new(&config.temp_dir)
         .map_err(|e| {
             tracing::error!("Failed to initialize file storage: {}", e);
             e
         })?;
 
     // Initialize session manager (1 hour expiry)
-    let session_manager = SessionManager::with_expiry(std::time::Duration::from_secs(3600));
+    let session_manager = services::session_manager::SessionManager::with_expiry(std::time::Duration::from_secs(3600));
 
     // Initialize cache manager (30 minute TTL, max 1000 items)
-    let cache_manager = CacheManager::with_ttl_and_max_size(
+    let cache_manager = services::cache_manager::CacheManager::with_ttl_and_max_size(
         std::time::Duration::from_secs(1800),
         1000
     );
 
     // Initialize rate limiter (100 requests per minute)
-    let rate_limiter = RateLimiter::with_config(services::rate_limiter::RateLimitConfig {
+    let rate_limiter = services::rate_limiter::RateLimiter::with_config(services::rate_limiter::RateLimitConfig {
         max_requests: 100,
         window_duration: std::time::Duration::from_secs(60),
     });
@@ -158,33 +139,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Build the application router
     let app = Router::new()
         // Health check endpoint
-        .route("/health", get(health::health_check))
-        .route("/api/health", get(health::health_check))
+        .route("/health", get(handlers::health::health_check))
+        .route("/api/health", get(handlers::health::health_check))
         
         // File upload endpoint
-        .route("/api/upload", axum::routing::post(upload::upload_image))
+        .route("/api/upload", axum::routing::post(handlers::upload::upload_image))
         
         // Text processing endpoints
-        .route("/api/process", axum::routing::post(process::process_text))
-        .route("/api/process/validate", axum::routing::post(process::validate_code))
-        .route("/api/process/languages", get(process::get_supported_languages))
+        .route("/api/process", axum::routing::post(handlers::process::process_text))
+        .route("/api/process/validate", axum::routing::post(handlers::process::validate_code))
+        .route("/api/process/languages", get(handlers::process::get_supported_languages))
         
         // Theme endpoints
-        .route("/api/themes", get(themes::list_themes))
-        .route("/api/themes/info", get(themes::list_theme_info))
-        .route("/api/themes/default", get(themes::get_default_theme))
-        .route("/api/themes/options", get(themes::get_customization_options))
-        .route("/api/themes/:theme_id", get(themes::get_theme))
-        .route("/api/themes/type/:theme_type", get(themes::get_themes_by_type))
-        .route("/api/themes/customize", axum::routing::post(themes::customize_theme))
-        .route("/api/themes/validate", axum::routing::post(themes::validate_theme))
+        .route("/api/themes", get(handlers::themes::list_themes))
+        .route("/api/themes/info", get(handlers::themes::list_theme_info))
+        .route("/api/themes/default", get(handlers::themes::get_default_theme))
+        .route("/api/themes/options", get(handlers::themes::get_customization_options))
+        .route("/api/themes/:theme_id", get(handlers::themes::get_theme))
+        .route("/api/themes/type/:theme_type", get(handlers::themes::get_themes_by_type))
+        .route("/api/themes/customize", axum::routing::post(handlers::themes::customize_theme))
+        .route("/api/themes/validate", axum::routing::post(handlers::themes::validate_theme))
         
         // Image generation and download endpoints
-        .route("/api/generate", axum::routing::post(generate::generate_image))
-        .route("/api/generate/progress/:download_id", get(generate::check_progress))
-        .route("/api/generate/download/:download_id", get(generate::download_file))
-        .route("/api/generate/options", get(generate::get_export_options))
-        .route("/api/generate/stats", get(generate::get_download_stats))
+        .route("/api/generate", axum::routing::post(handlers::generate::generate_image))
+        .route("/api/generate/progress/:download_id", get(handlers::generate::check_progress))
+        .route("/api/generate/download/:download_id", get(handlers::generate::download_file))
+        .route("/api/generate/options", get(handlers::generate::get_export_options))
+        .route("/api/generate/stats", get(handlers::generate::get_download_stats))
         
         // Serve static files
         .nest_service("/static", ServeDir::new("static"))

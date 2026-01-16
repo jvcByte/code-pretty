@@ -3,6 +3,14 @@ name = "code-snippet-designer"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "code_snippet_designer"
+path = "src/lib.rs"
+
+[[bin]]
+name = "code-snippet-designer"
+path = "src/main.rs"
+
 [features]
 default = []
 tesseract = ["dep:tesseract"]
@@ -11,7 +19,7 @@ tesseract = ["dep:tesseract"]
 # Web framework
 axum = "0.7"
 tokio = { version = "1.0", features = ["full"] }
-tower = "0.4"
+tower = { version = "0.4", features = ["util"] }
 tower-http = { version = "0.5", features = ["fs", "cors", "trace", "timeout"] }
 multer = "3.0"
 futures-util = "0.3"

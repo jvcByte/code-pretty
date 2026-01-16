@@ -85,6 +85,12 @@ impl DownloadService {
         // Validate export options
         ExportService::validate_options(&request.export_options)?;
 
+        // Check concurrent download limit BEFORE adding to tracker
+        let active_downloads = self.count_active_downloads().await;
+        if active_downloads >= self.max_concurrent_downloads {
+            return Err(AppError::image_generation_failed("Server is busy. Please try again later."));
+        }
+
         let download_id = Uuid::new_v4().to_string();
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -107,15 +113,6 @@ impl DownloadService {
         {
             let mut tracker = self.progress_tracker.write().await;
             tracker.insert(download_id.clone(), progress);
-        }
-
-        // Check concurrent download limit
-        let active_downloads = self.count_active_downloads().await;
-        if active_downloads >= self.max_concurrent_downloads {
-            self.update_progress(&download_id, DownloadStatus::Failed, 0, 
-                "Server is busy. Please try again later.".to_string(), 
-                Some("Too many concurrent downloads".to_string())).await?;
-            return Err(AppError::image_generation_failed("Server is busy. Please try again later."));
         }
 
         // Start processing in background
@@ -557,7 +554,8 @@ mod tests {
             language: "Rust".to_string(),
             theme: Theme::default_dark(),
             export_options: EnhancedExportOptions {
-                quality: 101, // Invalid quality
+                format: ImageFormat::JPEG,
+                quality: 101, // Invalid quality for JPEG
                 ..Default::default()
             },
         };
@@ -605,7 +603,7 @@ mod tests {
     async fn test_concurrent_download_limit() {
         let (mut service, _temp_dir) = create_test_service().await;
         
-        // Set low limit for testing
+        // Set limit to 1 for testing
         service.set_max_concurrent_downloads(1);
         
         let request = DownloadRequest {
@@ -616,12 +614,13 @@ mod tests {
         };
 
         // First download should succeed
-        let _download_id1 = service.start_download(request.clone()).await.unwrap();
+        let download_id1 = service.start_download(request.clone()).await.unwrap();
         
-        // Second download might fail due to limit (depends on timing)
+        // Second download should fail due to limit
         let result2 = service.start_download(request).await;
-        // We can't guarantee this will fail due to async processing timing
-        // but the limit logic is tested
-        assert!(result2.is_ok() || result2.is_err());
+        assert!(result2.is_err());
+        
+        // Verify first download exists
+        assert!(service.get_progress(&download_id1).await.is_some());
     }
 }
