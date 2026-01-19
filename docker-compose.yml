@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: code-snippet-designer
+    ports:
+      - "3000:3000"
+    environment:
+      - RUST_LOG=info
+      - HOST=0.0.0.0
+      - PORT=3000
+      - MAX_FILE_SIZE=10485760  # 10MB
+      - TEMP_DIR=/tmp/code-snippet-designer
+      - REQUEST_TIMEOUT_SECONDS=30
+    volumes:
+      # Optional: persist temporary files
+      - temp-files:/tmp/code-snippet-designer
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  temp-files:

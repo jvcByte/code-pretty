@@ -152,7 +152,7 @@
     - Verify error handling and recovery mechanisms
     - _Requirements: 1.2, 3.1, 4.1, 4.5_
 
-  - [-] 11.2 Create integration tests
+  - [ ] 11.2 Create integration tests
     - Test complete workflow from upload to download
     - Validate API endpoints with various input scenarios
     - Test frontend-backend integration and error handling

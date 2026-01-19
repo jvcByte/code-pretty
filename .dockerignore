@@ -1,0 +1,28 @@
+# Build artifacts
+target/
+*.log
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Documentation
+*.md
+!README.md
+
+# Tests
+tests/
+
+# Environment
+.env
+.env.local
+
+# Temporary files
+tmp/
+temp/

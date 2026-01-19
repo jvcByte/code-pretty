@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: code-snippet-designer
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    envVars:
+      - key: RUST_LOG
+        value: info
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 3000
+      - key: MAX_FILE_SIZE
+        value: 10485760
+      - key: TEMP_DIR
+        value: /tmp/code-snippet-designer
+      - key: REQUEST_TIMEOUT_SECONDS
+        value: 30

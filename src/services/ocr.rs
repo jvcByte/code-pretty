@@ -1,9 +1,12 @@
 // OCR service for text extraction from images
 use crate::models::errors::AppError;
-use image::{DynamicImage, GenericImageView};
+use image::{DynamicImage, GenericImageView, ImageBuffer, ImageOutputFormat};
 use serde::{Deserialize, Serialize};
+use std::fs::File;
+
 use std::time::Duration;
 use tokio::time::timeout;
+use uuid::Uuid;
 
 /// Result of OCR text extraction
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,8 +48,6 @@ impl Default for OCRConfig {
 /// OCR Service for extracting text from images
 pub struct OCRService {
     config: OCRConfig,
-    #[cfg(feature = "tesseract")]
-    tesseract: Option<tesseract::Tesseract>,
 }
 
 impl OCRService {
@@ -57,36 +58,20 @@ impl OCRService {
 
     /// Create a new OCR service with custom configuration
     pub fn with_config(config: OCRConfig) -> Result<Self, AppError> {
-        #[cfg(feature = "tesseract")]
-        {
-            let tesseract = Self::initialize_tesseract(&config)?;
-            Ok(Self {
-                config,
-                tesseract: Some(tesseract),
-            })
-        }
-
-        #[cfg(not(feature = "tesseract"))]
-        {
-            tracing::warn!("Tesseract OCR is not available. OCR functionality will be limited.");
-            Ok(Self { config })
-        }
+        // Do not initialize a persistent Tesseract instance here.
+        // Tesseract objects are not `Sync` and must be created and used
+        // inside a blocking task per-request to avoid sharing raw pointers
+        // across async executor threads.
+        Ok(Self { config })
     }
 
+    // Tesseract initialization is performed per-request inside blocking tasks.
+    // We keep a stub here so callers that might attempt to call it will get a clear error.
     #[cfg(feature = "tesseract")]
-    fn initialize_tesseract(config: &OCRConfig) -> Result<tesseract::Tesseract, AppError> {
-        let mut tess = tesseract::Tesseract::new(None, Some(&config.languages.join("+")))
-            .map_err(|e| AppError::ocr_failed(format!("Failed to initialize Tesseract: {}", e)))?;
-
-        // Set OCR engine mode to LSTM (best accuracy)
-        tess.set_variable("tessedit_ocr_engine_mode", "1")
-            .map_err(|e| AppError::ocr_failed(format!("Failed to configure Tesseract: {}", e)))?;
-
-        // Optimize for code/text blocks
-        tess.set_variable("tessedit_pageseg_mode", "6") // Assume uniform block of text
-            .map_err(|e| AppError::ocr_failed(format!("Failed to configure page segmentation: {}", e)))?;
-
-        Ok(tess)
+    fn initialize_tesseract(_config: &OCRConfig) -> Result<tesseract::Tesseract, AppError> {
+        Err(AppError::ocr_failed(
+            "Tesseract initialization is deferred to per-request blocking tasks",
+        ))
     }
 
     /// Extract text from image bytes
@@ -119,7 +104,10 @@ impl OCRService {
     /// Load image from bytes
     fn load_image(&self, image_data: &[u8]) -> Result<DynamicImage, AppError> {
         image::load_from_memory(image_data).map_err(|e| {
-            AppError::ocr_failed(format!("Failed to load image: {}. Ensure the file is a valid PNG, JPG, or JPEG image.", e))
+            AppError::ocr_failed(format!(
+                "Failed to load image: {}. Ensure the file is a valid PNG, JPG, or JPEG image.",
+                e
+            ))
         })
     }
 
@@ -158,8 +146,8 @@ impl OCRService {
 
     #[cfg(feature = "tesseract")]
     async fn perform_tesseract_ocr(&self, image: DynamicImage) -> Result<OCRResult, AppError> {
-        let tesseract = self.tesseract.as_ref()
-            .ok_or_else(|| AppError::ocr_failed("Tesseract not initialized"))?;
+        // Do not rely on a stored Tesseract instance. A fresh Tesseract
+        // will be created and used inside the blocking task below.
 
         // Convert image to RGB8 format for Tesseract
         let rgb_image = image.to_rgb8();
@@ -171,23 +159,51 @@ impl OCRService {
         let min_confidence = self.config.min_confidence;
 
         tokio::task::spawn_blocking(move || {
-            let mut tess = tesseract::Tesseract::new(None, Some(&languages.join("+")))
-                .map_err(|e| AppError::ocr_failed(format!("Failed to initialize Tesseract: {}", e)))?;
+            // Initialize Tesseract
+            let tess =
+                tesseract::Tesseract::new(None, Some(&languages.join("+"))).map_err(|e| {
+                    AppError::ocr_failed(format!("Failed to initialize Tesseract: {}", e))
+                })?;
 
-            // Set image data
-            tess.set_image(&raw_data, width as i32, height as i32, 3, (width * 3) as i32)
+            // Write image as a temporary PNG file because the tesseract crate's
+            // `set_image` expects a filename.
+            let tmp_dir = std::env::temp_dir();
+            let filename = tmp_dir.join(format!("ocr_{}.png", Uuid::new_v4()));
+            let mut file = File::create(&filename).map_err(|e| {
+                AppError::ocr_failed(format!("Failed to create temp file for OCR: {}", e))
+            })?;
+
+            // Reconstruct the image buffer from the raw RGB bytes and save as PNG
+            let img_buffer = ImageBuffer::<image::Rgb<u8>, _>::from_raw(width, height, raw_data)
+                .ok_or_else(|| AppError::ocr_failed("Failed to construct image buffer for OCR"))?;
+            let dyn_img = DynamicImage::ImageRgb8(img_buffer);
+            dyn_img
+                .write_to(&mut file, ImageOutputFormat::Png)
+                .map_err(|e| {
+                    AppError::ocr_failed(format!("Failed to write temp image for OCR: {}", e))
+                })?;
+
+            // Set image by filename
+            let mut tess = tess
+                .set_image(
+                    filename
+                        .to_str()
+                        .ok_or_else(|| AppError::ocr_failed("Invalid temp filename"))?,
+                )
                 .map_err(|e| AppError::ocr_failed(format!("Failed to set image: {}", e)))?;
 
-            let text = tess.get_text()
+            let text = tess
+                .get_text()
                 .map_err(|e| AppError::ocr_failed(format!("Failed to extract text: {}", e)))?;
 
             // Get confidence score
             let confidence = tess.mean_text_conf() as f32 / 100.0;
 
-            // Detect language
-            let detected_language = tess.get_source_language()
-                .ok()
-                .map(|lang| lang.to_string());
+            // Use the languages we initialized as the detected language hint
+            let detected_language = Some(languages.join("+"));
+
+            // Try to remove the temporary file; ignore cleanup errors.
+            let _ = std::fs::remove_file(&filename);
 
             let needs_review = confidence < min_confidence;
 
@@ -206,7 +222,7 @@ impl OCRService {
     async fn perform_fallback_ocr(&self, _image: DynamicImage) -> Result<OCRResult, AppError> {
         // Fallback when Tesseract is not available
         tracing::warn!("Tesseract OCR is not available. Returning placeholder result.");
-        
+
         Err(AppError::ocr_failed(
             "OCR functionality is not available. Please install Tesseract OCR or enable the tesseract feature."
         ))
@@ -218,19 +234,19 @@ impl OCRService {
         {
             // Common languages supported by Tesseract
             vec![
-                "eng".to_string(), // English
-                "spa".to_string(), // Spanish
-                "fra".to_string(), // French
-                "deu".to_string(), // German
-                "ita".to_string(), // Italian
-                "por".to_string(), // Portuguese
-                "rus".to_string(), // Russian
-                "jpn".to_string(), // Japanese
+                "eng".to_string(),     // English
+                "spa".to_string(),     // Spanish
+                "fra".to_string(),     // French
+                "deu".to_string(),     // German
+                "ita".to_string(),     // Italian
+                "por".to_string(),     // Portuguese
+                "rus".to_string(),     // Russian
+                "jpn".to_string(),     // Japanese
                 "chi_sim".to_string(), // Chinese Simplified
                 "chi_tra".to_string(), // Chinese Traditional
-                "kor".to_string(), // Korean
-                "ara".to_string(), // Arabic
-                "hin".to_string(), // Hindi
+                "kor".to_string(),     // Korean
+                "ara".to_string(),     // Arabic
+                "hin".to_string(),     // Hindi
             ]
         }
 
@@ -242,10 +258,8 @@ impl OCRService {
 
     /// Update OCR configuration
     pub fn update_config(&mut self, config: OCRConfig) -> Result<(), AppError> {
-        #[cfg(feature = "tesseract")]
-        {
-            self.tesseract = Some(Self::initialize_tesseract(&config)?);
-        }
+        // Do not attempt to initialize or store a persistent Tesseract here.
+        // Future OCR calls will create Tesseract instances inside blocking tasks.
         self.config = config;
         Ok(())
     }
@@ -303,10 +317,10 @@ impl OCRService {
 
         // Common character substitutions in code
         let replacements = vec![
-            ("l", "1"), // lowercase L to 1 in certain contexts
-            ("O", "0"), // uppercase O to 0 in certain contexts
-            ("S", "$"), // S to $ in variable names
-            ("|", "l"), // pipe to lowercase L
+            ("l", "1"),  // lowercase L to 1 in certain contexts
+            ("O", "0"),  // uppercase O to 0 in certain contexts
+            ("S", "$"),  // S to $ in variable names
+            ("|", "l"),  // pipe to lowercase L
             ("rn", "m"), // rn to m
             ("vv", "w"), // double v to w
         ];
@@ -317,7 +331,8 @@ impl OCRService {
             // Only replace in specific contexts to avoid false positives
             if from == "O" && to == "0" {
                 // Replace O with 0 when surrounded by digits
-                let re = regex::Regex::new(r"(\d)O(\d)").unwrap_or_else(|_| regex::Regex::new(r"").unwrap());
+                let re = regex::Regex::new(r"(\d)O(\d)")
+                    .unwrap_or_else(|_| regex::Regex::new(r"").unwrap());
                 fixed = re.replace_all(&fixed, format!("$1{}$2", to)).to_string();
             }
         }
@@ -337,7 +352,11 @@ impl OCRService {
 
             // Reconstruct line with preserved indentation
             if leading_spaces > 0 {
-                formatted_lines.push(format!("{}{}", " ".repeat(leading_spaces), trimmed.trim_start()));
+                formatted_lines.push(format!(
+                    "{}{}",
+                    " ".repeat(leading_spaces),
+                    trimmed.trim_start()
+                ));
             } else {
                 formatted_lines.push(trimmed.to_string());
             }
@@ -406,8 +425,11 @@ impl OCRService {
     fn has_suspicious_patterns(text: &str) -> bool {
         // Check for excessive special characters that might indicate OCR errors
         // Exclude common code characters like parentheses, quotes, brackets, etc.
-        let code_chars = ['(', ')', '{', '}', '[', ']', '"', '\'', ';', ':', ',', '.', '!', '?'];
-        let special_char_count = text.chars()
+        let code_chars = [
+            '(', ')', '{', '}', '[', ']', '"', '\'', ';', ':', ',', '.', '!', '?',
+        ];
+        let special_char_count = text
+            .chars()
             .filter(|c| !c.is_alphanumeric() && !c.is_whitespace() && !code_chars.contains(c))
             .count();
         let total_chars = text.chars().count();
@@ -432,7 +454,10 @@ impl OCRService {
     }
 
     /// Extract text with automatic processing and validation
-    pub async fn extract_and_process(&self, image_data: &[u8]) -> Result<ProcessedOCRResult, AppError> {
+    pub async fn extract_and_process(
+        &self,
+        image_data: &[u8],
+    ) -> Result<ProcessedOCRResult, AppError> {
         // Extract text
         let mut result = self.extract_text(image_data).await?;
 
@@ -539,7 +564,10 @@ mod tests {
                 consecutive_empty = 0;
             }
         }
-        assert!(max_consecutive <= 2, "Should not have more than 2 consecutive empty lines");
+        assert!(
+            max_consecutive <= 2,
+            "Should not have more than 2 consecutive empty lines"
+        );
     }
 
     #[test]
@@ -555,7 +583,9 @@ mod tests {
         assert!(OCRService::has_suspicious_patterns("|||||||"));
         assert!(OCRService::has_suspicious_patterns("~~~~~~~"));
         // This should not be suspicious - it's valid code
-        assert!(!OCRService::has_suspicious_patterns("fn main() { println!(\"test\"); }"));
+        assert!(!OCRService::has_suspicious_patterns(
+            "fn main() { println!(\"test\"); }"
+        ));
         // Test with high ratio of unusual special characters
         assert!(OCRService::has_suspicious_patterns("!@#$%^&*_+|<>"));
         // Dots should not be suspicious (common in code)

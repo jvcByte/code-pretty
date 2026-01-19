@@ -1,24 +1,28 @@
+use crate::models::theme::Theme;
+use crate::services::download_service::{DownloadProgress, DownloadRequest, DownloadService};
+use crate::services::export_service::{EnhancedExportOptions, ExportService};
+use crate::AppState;
 use axum::{
+    body::Body,
     extract::{Path, State},
     http::{header, StatusCode},
     response::{Json, Response},
-    body::Body,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use crate::AppState;
-use crate::services::download_service::{DownloadService, DownloadRequest, DownloadProgress};
-use crate::services::export_service::{ExportService, EnhancedExportOptions};
-use crate::models::theme::Theme;
 
 /// Request to generate and download a code snippet image
 #[derive(Debug, Deserialize)]
 pub struct GenerateRequest {
     pub code: String,
     pub language: String,
-    pub theme: Theme,
-    #[serde(default)]
-    pub export_options: EnhancedExportOptions,
+    // Accept a theme identifier from the frontend (e.g. "default", "light").
+    // We'll map this to a Theme on the server to keep the API simple for the client.
+    pub theme: String,
+    // Accept either `export_options` or the alias `options` from the client.
+    // Be tolerant: allow the client to omit options or send an arbitrary JSON object.
+    #[serde(default, alias = "options")]
+    pub export_options: Option<serde_json::Value>,
 }
 
 /// Response for starting a download
@@ -49,7 +53,7 @@ pub async fn generate_image(
             Json(json!({
                 "error": "Invalid request",
                 "message": "Code content cannot be empty"
-            }))
+            })),
         ));
     }
 
@@ -57,47 +61,74 @@ pub async fn generate_image(
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({
-                "error": "Invalid request", 
+                "error": "Invalid request",
                 "message": "Programming language must be specified"
-            }))
+            })),
         ));
     }
 
-    // Create download service
-    let export_service = std::sync::Arc::new(
-        ExportService::new().map_err(|e| {
-            tracing::error!("Failed to create export service: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({
-                    "error": "Service initialization failed",
-                    "message": "Unable to initialize image generation service"
-                }))
-            )
-        })?
-    );
+    // Map theme id (string) to Theme defaults.
+    // This accepts simple theme identifiers from the frontend and maps them to
+    // one of the available Theme factory methods. Unknown identifiers fall back to dark.
+    let theme_obj = match request.theme.as_str() {
+        // Common light identifiers
+        "light" | "default-light" | "default_light" | "light-theme" | "github" => {
+            Theme::default_light()
+        }
+        // Common dark identifiers (explicit)
+        "dark" | "default" | "default-dark" | "default_dark" | "dracula" | "monokai" => {
+            Theme::default_dark()
+        }
+        // Fallback
+        _ => Theme::default_dark(),
+    };
 
-    let download_service = DownloadService::new(export_service, app_state.storage.clone());
+    // Use the shared DownloadService from AppState (initialized in main).
+    // This ensures progress and metadata persist across requests.
+    let download_service = app_state.download_service.clone();
 
+    // Create download request using the mapped Theme value
     // Create download request
+    // Map the incoming optional JSON `export_options` to the strongly-typed EnhancedExportOptions.
+    // If the client omitted options or provided invalid content, fall back to defaults.
+    let export_options: EnhancedExportOptions = match request.export_options {
+        Some(val) => {
+            // Try to deserialize into EnhancedExportOptions; if that fails, fallback to default
+            match serde_json::from_value::<EnhancedExportOptions>(val) {
+                Ok(opts) => opts,
+                Err(err) => {
+                    tracing::warn!(
+                        "Failed to parse export_options from request, falling back to default: {}",
+                        err
+                    );
+                    EnhancedExportOptions::default()
+                }
+            }
+        }
+        None => EnhancedExportOptions::default(),
+    };
+
     let download_request = DownloadRequest {
         code: request.code,
         language: request.language,
-        theme: request.theme,
-        export_options: request.export_options,
+        theme: theme_obj,
+        export_options,
     };
 
     // Start the download process
-    let download_id = download_service.start_download(download_request).await.map_err(|e| {
-        tracing::error!("Failed to start download: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "error": "Download failed to start",
-                "message": e.to_string()
-            }))
-        )
-    })?;
+    let download_id = download_service
+        .start_download(download_request)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to start download: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "error": "Download failed to start",
+                    "message": e.to_string()
+                })),
+            )
+        })?;
 
     // Store download service in app state for later use
     // Note: In a real application, you'd want to store this in the AppState
@@ -121,32 +152,23 @@ pub async fn check_progress(
     State(app_state): State<AppState>,
     Path(download_id): Path<String>,
 ) -> Result<Json<DownloadProgress>, (StatusCode, Json<Value>)> {
-    // Create download service (in real app, this would be from AppState)
-    let export_service = std::sync::Arc::new(
-        ExportService::new().map_err(|e| {
-            tracing::error!("Failed to create export service: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({
-                    "error": "Service initialization failed",
-                    "message": "Unable to initialize service"
-                }))
-            )
-        })?
-    );
-
-    let download_service = DownloadService::new(export_service, app_state.storage.clone());
+    // Use the shared DownloadService from AppState (initialized in main).
+    // This allows retrieving progress tracked by the background worker.
+    let download_service = app_state.download_service.clone();
 
     // Get progress
-    let progress = download_service.get_progress(&download_id).await.ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(json!({
-                "error": "Download not found",
-                "message": format!("No download found with ID: {}", download_id)
-            }))
-        )
-    })?;
+    let progress = download_service
+        .get_progress(&download_id)
+        .await
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "Download not found",
+                    "message": format!("No download found with ID: {}", download_id)
+                })),
+            )
+        })?;
 
     Ok(Json(progress))
 }
@@ -156,38 +178,29 @@ pub async fn download_file(
     State(app_state): State<AppState>,
     Path(download_id): Path<String>,
 ) -> Result<Response<Body>, (StatusCode, Json<Value>)> {
-    // Create download service (in real app, this would be from AppState)
-    let export_service = std::sync::Arc::new(
-        ExportService::new().map_err(|e| {
-            tracing::error!("Failed to create export service: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({
-                    "error": "Service initialization failed",
-                    "message": "Unable to initialize service"
-                }))
-            )
-        })?
-    );
-
-    let download_service = DownloadService::new(export_service, app_state.storage.clone());
+    // Use the shared DownloadService from AppState (initialized in main).
+    // This ensures file metadata created during background processing is available here.
+    let download_service = app_state.download_service.clone();
 
     // Get the file
-    let (file_data, metadata) = download_service.get_download_file(&download_id).await.map_err(|e| {
-        let status = match e.to_string().as_str() {
-            s if s.contains("not found") => StatusCode::NOT_FOUND,
-            s if s.contains("expired") => StatusCode::GONE,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        };
+    let (file_data, metadata) = download_service
+        .get_download_file(&download_id)
+        .await
+        .map_err(|e| {
+            let status = match e.to_string().as_str() {
+                s if s.contains("not found") => StatusCode::NOT_FOUND,
+                s if s.contains("expired") => StatusCode::GONE,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
 
-        (
-            status,
-            Json(json!({
-                "error": "Download failed",
-                "message": e.to_string()
-            }))
-        )
-    })?;
+            (
+                status,
+                Json(json!({
+                    "error": "Download failed",
+                    "message": e.to_string()
+                })),
+            )
+        })?;
 
     // Create response with appropriate headers
     let response = Response::builder()
@@ -196,7 +209,7 @@ pub async fn download_file(
         .header(header::CONTENT_LENGTH, metadata.file_size.to_string())
         .header(
             header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", metadata.original_filename)
+            format!("attachment; filename=\"{}\"", metadata.original_filename),
         )
         .header(header::CACHE_CONTROL, "no-cache, no-store, must-revalidate")
         .header(header::PRAGMA, "no-cache")
@@ -209,11 +222,15 @@ pub async fn download_file(
                 Json(json!({
                     "error": "Response building failed",
                     "message": "Unable to create download response"
-                }))
+                })),
             )
         })?;
 
-    tracing::info!("Serving download for ID: {} (size: {} bytes)", download_id, metadata.file_size);
+    tracing::info!(
+        "Serving download for ID: {} (size: {} bytes)",
+        download_id,
+        metadata.file_size
+    );
 
     Ok(response)
 }
@@ -255,21 +272,8 @@ pub async fn get_export_options() -> Json<Value> {
 pub async fn get_download_stats(
     State(app_state): State<AppState>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    // Create download service
-    let export_service = std::sync::Arc::new(
-        ExportService::new().map_err(|e| {
-            tracing::error!("Failed to create export service: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({
-                    "error": "Service initialization failed",
-                    "message": "Unable to initialize service"
-                }))
-            )
-        })?
-    );
-
-    let download_service = DownloadService::new(export_service, app_state.storage.clone());
+    // Use the shared DownloadService from AppState to obtain statistics.
+    let download_service = app_state.download_service.clone();
 
     let stats = download_service.get_stats().await;
 

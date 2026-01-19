@@ -15,4 +15,5 @@ pub struct AppState {
     pub session_manager: Arc<services::session_manager::SessionManager>,
     pub cache_manager: Arc<services::cache_manager::CacheManager<String, Vec<u8>>>,
     pub rate_limiter: Arc<services::rate_limiter::RateLimiter>,
+    pub download_service: Arc<services::download_service::DownloadService>,
 }

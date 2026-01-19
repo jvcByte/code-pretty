@@ -36,6 +36,8 @@ resvg = "0.37"
 # tesseract = "0.13"
 tesseract = { version = "0.13", optional = true }
 
+# axum-extra removed; using `multer` directly for multipart handling
+
 # Syntax highlighting
 syntect = "5.1"
 
